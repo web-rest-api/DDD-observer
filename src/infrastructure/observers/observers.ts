@@ -1,6 +1,7 @@
 import { createMember, checkIn, suspendMember, cancelMembership, subscribe } from "./src/domain/product/factories"
 import { emailObserver } from "./src/infrastructure/observers/emails"
 import { databaseObserver, trainerObserver, loggerObserver } from "./src/infrastructure/observers/database"
+import { gymEmitter } from "./src/infrastructure/observers/observers"
 
 // -- Test 1: Create valid member --
 console.log("\n-- Test 1: Create valid member --")
@@ -10,6 +11,11 @@ member = subscribe(member, emailObserver)
 member = subscribe(member, trainerObserver)
 member = subscribe(member, databaseObserver)
 console.log(`Created: ${member.name} | Status: ${member.status}`)
+gymEmitter.emit([loggerObserver, emailObserver, trainerObserver, databaseObserver], {
+  type: "MemberJoined",
+  memberId: member.id as any,
+  name: member.name as any,
+})
 
 // -- Test 2: Member checks in --
 console.log("\n-- Test 2: Member checks in --")
