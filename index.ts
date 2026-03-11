@@ -1,113 +1,76 @@
-import { v4 as uuidv4 } from "uuid"
+import {
+  createPatient,
+  checkInPatient,
+  dischargePatient,
+  subscribe,
+  unsubscribe,
+  makeVisitWindow,
+  isWithinVisitWindow,
+  makeAge,
+  makeRoomNumber,
+} from "./src/domain/patient.js"
 
-type ProductName = "Shoes" | "Shirt" | "Pants"
+import { logger, frontDeskNotifier, emailNotifier } from "./src/infrastructure/observers/observers.js"
 
-type PriceNumber = number & { readonly __brand: unique symbol }
+// ============================================================
+// PHASE 2 — Dumb plain object (primitive obsessed)
+// ============================================================
 
-function createPrice(value: number): PriceNumber {
-	if (value < 0) {
-		throw new Error("Value must be positive")
-	}
-
-	return value as PriceNumber
+type DumbPatient = {
+  id: string
+  name: string
+  age: number
+  diagnosis: string
+  roomNumber: number
 }
 
-// factory function
-function createProduct(
-	id: string,
-	name: ProductName,
-	price: PriceNumber,
-): Product {
-	if (name !== "Shoes" && name !== "Shirt" && name !== "Pants") {
-		throw new Error("Name must be Shoes, Shirt, or Pants")
-	}
-
-	if (!id) {
-		throw new Error("Id must be provided")
-	}
-
-	if (price < 0) {
-		throw new Error("Price must be positive")
-	}
-
-	return {
-		id: uuidv4() as ProductId,
-		name,
-		price,
-	}
-}
-type Product = {
-	id: ProductId
-	name: ProductName
-	price: PriceNumber
+const patientOne: DumbPatient = {
+  id: "123",
+  name: "John Doe",
+  age: -5,          // silent bug — nothing complains
+  diagnosis: "",    // silent bug — nothing complains
+  roomNumber: 9999, // silent bug — nothing complains
 }
 
-type ProductId = string & { readonly __brand: unique symbol }
-type StockLevel = number & { readonly __brand: unique symbol }
+console.log("Phase 2 — dumb patient:", patientOne)
 
-type ProductCreatedEvent = {
-	readonly type: "ProductCreated"
-	readonly productId: ProductId
-	readonly name: ProductName
-	readonly price: PriceNumber
-}
+// ============================================================
+// PHASE 4 — Smart constructors catching bad values
+// ============================================================
 
-type PriceUpdatedEvent = {
-	readonly type: "PriceUpdated"
-	readonly productId: ProductId
-	readonly oldPrice: PriceNumber
-	readonly newPrice: PriceNumber
-}
+try { makeAge(-5) } catch (e) { console.log("Phase 4 — caught:", (e as Error).message) }
+try { makeRoomNumber(9999) } catch (e) { console.log("Phase 4 — caught:", (e as Error).message) }
 
-// ✅ Precise — the event carries what changed and why
-type StockReducedEvent = {
-	readonly type: "StockReduced"
-	readonly productId: ProductId
-	readonly newLevel: StockLevel
-	readonly quantity: Quantity
-}
-type DomainEvent = ProductCreatedEvent | PriceUpdatedEvent | StockReducedEvent
+// ============================================================
+// PHASE 5 — Value Object
+// ============================================================
 
-type Quantity = number & { readonly __brand: unique symbol }
+const visitWindow = makeVisitWindow(9, 17)
+console.log("Phase 5 — visiting allowed at 10?", isWithinVisitWindow(visitWindow, 10)) // true
+console.log("Phase 5 — visiting allowed at 20?", isWithinVisitWindow(visitWindow, 20)) // false
 
-type Observer = (event: DomainEvent) => void
+// ============================================================
+// PHASE 6 — Entity identity
+// ============================================================
 
-const observers: Observer[] = []
+const p1 = createPatient("Alice", 30, 101)
+const p2 = createPatient("Bob", 45, 102)
+console.log("Phase 6 — same patient?", p1.id === p2.id) // false
 
-// first product (easy construction)
-const product1: Product = {
-	id: uuidv4() as ProductId,
-	name: "Shoes",
-	price: createPrice(100),
-}
+// ============================================================
+// PHASE 7 — Observer wiring
+// ============================================================
 
-console.log(product1)
+let patient = createPatient("Alice", 30, 101)
 
-const sendEmailMock: Observer = (event: DomainEvent) => {
-	console.log(`Email sent for event ${event.type}`)
-}
+patient = subscribe(patient, logger)
+patient = subscribe(patient, frontDeskNotifier)
+patient = subscribe(patient, emailNotifier)
 
-const saveToDatabaseMock: Observer = (event: DomainEvent) => {
-	console.log(`Data saved to database for event ${event.type}`)
-}
-observers.push(sendEmailMock)
-observers.push(saveToDatabaseMock)
+// all three fire:
+patient = checkInPatient(patient)
 
-try {
-	const product2 = createProduct(uuidv4(), "Shirt", createPrice(50))
-	console.log(product2)
-	observers.forEach((observer) =>
-		observer({
-			type: "ProductCreated",
-			productId: product2.id,
-			name: product2.name,
-			price: product2.price,
-		}),
-	)
-} catch (error) {
-	if (error instanceof Error) {
-		console.error(error.message)
-	} else {
-		console.error("Unknown error")
-	}
-}
+// unsubscribe emailNotifier — only logger and frontDesk fire:
+patient = unsubscribe(patient, emailNotifier)
+patient = dischargePatient(patient)
+patient = subscribe(patient, logger)
